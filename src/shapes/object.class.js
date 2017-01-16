@@ -4,7 +4,6 @@
 
   var fabric = global.fabric || (global.fabric = { }),
       extend = fabric.util.object.extend,
-      clone = fabric.util.object.clone,
       toFixed = fabric.util.toFixed,
       capitalize = fabric.util.string.capitalize,
       degreesToRadians = fabric.util.degreesToRadians,
@@ -36,9 +35,8 @@
    * @fires mouseup
    * @fires mouseover
    * @fires mouseout
-   * @fires mousewheel
    */
-  fabric.Object = fabric.util.createClass(fabric.CommonMethods, /** @lends fabric.Object.prototype */ {
+  fabric.Object = fabric.util.createClass(/** @lends fabric.Object.prototype */ {
 
     /**
      * Retrieves object's {@link fabric.Object#clipTo|clipping function}
@@ -525,7 +523,7 @@
     globalCompositeOperation: 'source-over',
 
     /**
-     * Background color of an object.
+     * Background color of an object. Only works with text objects at the moment.
      * @type String
      * @default
      */
@@ -862,8 +860,8 @@
           width = dim.x * zoomX,
           height = dim.y * zoomY;
       return {
-        width: Math.ceil(width) + 2,
-        height: Math.ceil(height) + 2,
+        width: width,
+        height: height,
         zoomX: zoomX,
         zoomY: zoomY
       };
@@ -895,9 +893,50 @@
         this.cacheHeight = height;
         this.zoomX = zoomX;
         this.zoomY = zoomY;
-        return true;
+        return true
       }
-      return false;
+      return false
+    },
+
+    /**
+     * @private
+     * @param {Object} [options] Options object
+     */
+    _initGradient: function(options) {
+      if (options.fill && options.fill.colorStops && !(options.fill instanceof fabric.Gradient)) {
+        this.set('fill', new fabric.Gradient(options.fill));
+      }
+      if (options.stroke && options.stroke.colorStops && !(options.stroke instanceof fabric.Gradient)) {
+        this.set('stroke', new fabric.Gradient(options.stroke));
+      }
+    },
+
+    /**
+     * @private
+     * @param {Object} [options] Options object
+     */
+    _initPattern: function(options) {
+      if (options.fill && options.fill.source && !(options.fill instanceof fabric.Pattern)) {
+        this.set('fill', new fabric.Pattern(options.fill));
+      }
+      if (options.stroke && options.stroke.source && !(options.stroke instanceof fabric.Pattern)) {
+        this.set('stroke', new fabric.Pattern(options.stroke));
+      }
+    },
+
+    /**
+     * @private
+     * @param {Object} [options] Options object
+     */
+    _initClipping: function(options) {
+      if (!options.clipTo || typeof options.clipTo !== 'string') {
+        return;
+      }
+
+      var functionBody = fabric.util.getFunctionBody(options.clipTo);
+      if (typeof functionBody !== 'undefined') {
+        this.clipTo = new Function('ctx', functionBody);
+      }
     },
 
     /**
@@ -905,12 +944,12 @@
      * @param {Object} [options] Options object
      */
     setOptions: function(options) {
-      this._setOptions(options);
-      this._initGradient(options.fill, 'fill');
-      this._initGradient(options.stroke, 'stroke');
+      for (var prop in options) {
+        this.set(prop, options[prop]);
+      }
+      this._initGradient(options);
       this._initClipping(options);
-      this._initPattern(options.fill, 'fill');
-      this._initPattern(options.stroke, 'stroke');
+      this._initPattern(options);
     },
 
     /**
@@ -1024,6 +1063,15 @@
     },
 
     /**
+     * Basic getter
+     * @param {String} property Property name
+     * @return {*} value of a property
+     */
+    get: function(property) {
+      return this[property];
+    },
+
+    /**
      * Return the object scale factor counting also the group scaling
      * @return {Object} object with scaleX and scaleY properties
      */
@@ -1035,6 +1083,37 @@
         scaleY *= scaling.scaleY;
       }
       return { scaleX: scaleX, scaleY: scaleY };
+    },
+
+    /**
+     * @private
+     */
+    _setObject: function(obj) {
+      for (var prop in obj) {
+        this._set(prop, obj[prop]);
+      }
+    },
+
+    /**
+     * Sets property to a given value. When changing position/dimension -related properties (left, top, scale, angle, etc.) `set` does not update position of object's borders/controls. If you need to update those, call `setCoords()`.
+     * @param {String|Object} key Property name or object (if object, iterate over the object properties)
+     * @param {Object|Function} value Property value (if function, the value is passed into it and its return value is used as a new one)
+     * @return {fabric.Object} thisArg
+     * @chainable
+     */
+    set: function(key, value) {
+      if (typeof key === 'object') {
+        this._setObject(key);
+      }
+      else {
+        if (typeof value === 'function' && key !== 'clipTo') {
+          this._set(key, value(this.get(key)));
+        }
+        else {
+          this._set(key, value);
+        }
+      }
+      return this;
     },
 
     /**
@@ -1060,16 +1139,10 @@
       else if (key === 'shadow' && value && !(value instanceof fabric.Shadow)) {
         value = new fabric.Shadow(value);
       }
-      else if (key === 'dirty' && this.group) {
-        this.group.set('dirty', value);
-      }
 
       this[key] = value;
 
       if (this.cacheProperties.indexOf(key) > -1) {
-        if (this.group) {
-          this.group.set('dirty', true);
-        }
         this.dirty = true;
       }
 
@@ -1088,6 +1161,20 @@
      */
     setOnGroup: function() {
       // implemented by sub-classes, as needed.
+    },
+
+    /**
+     * Toggles specified property from `true` to `false` or from `false` to `true`
+     * @param {String} property Property to toggle
+     * @return {fabric.Object} thisArg
+     * @chainable
+     */
+    toggle: function(property) {
+      var value = this.get(property);
+      if (typeof value === 'boolean') {
+        this.set(property, !value);
+      }
+      return this;
     },
 
     /**
@@ -1236,7 +1323,7 @@
         ctx.lineJoin = this.strokeLineJoin;
         ctx.miterLimit = this.strokeMiterLimit;
         ctx.strokeStyle = this.stroke.toLive
-          ? this.stroke.toLive(ctx, this)
+          ? this.stroke.toLive(ctx, this, this instanceof fabric.Text)
           : this.stroke;
       }
     },
@@ -1244,7 +1331,7 @@
     _setFillStyles: function(ctx) {
       if (this.fill) {
         ctx.fillStyle = this.fill.toLive
-          ? this.fill.toLive(ctx, this)
+          ? this.fill.toLive(ctx, this, this instanceof fabric.Text)
           : this.fill;
       }
     },
@@ -1358,6 +1445,13 @@
       var offsetX = -this.width / 2 + filler.offsetX || 0,
           offsetY = -this.height / 2 + filler.offsetY || 0;
       ctx.translate(offsetX, offsetY);
+      if (!filler.scaleWithObject) {
+        ctx.scale(1 / this.scaleX, 1 / this.scaleY);
+      }
+      ctx.scale(filler.scaleX, filler.scaleY);
+      if (filler.angle) {
+        ctx.rotate(degreesToRadians(filler.angle));
+      }
     },
 
     /**
@@ -1394,6 +1488,7 @@
       }
 
       ctx.save();
+
       this._setLineDash(ctx, this.strokeDashArray, this._renderDashedStroke);
       this._applyPatternGradientTransform(ctx, this.stroke);
       ctx.stroke();
@@ -1578,8 +1673,16 @@
         gradient.coords.r2 = options.r2;
       }
 
-      gradient.gradientTransform = options.gradientTransform;
-      fabric.Gradient.prototype.addColorStop.call(gradient, options.colorStops);
+      options.gradientTransform && (gradient.gradientTransform = options.gradientTransform);
+
+      for (var position in options.colorStops) {
+        var color = new fabric.Color(options.colorStops[position]);
+        gradient.colorStops.push({
+          offset: position,
+          color: color.toRgb(),
+          opacity: color.getAlpha()
+        });
+      }
 
       return this.set(property, fabric.Gradient.forObject(this, gradient));
     },
@@ -1795,19 +1898,17 @@
    */
   fabric.Object.NUM_FRACTION_DIGITS = 2;
 
-  fabric.Object._fromObject = function(className, object, callback, forceAsync, extraParam) {
-    var klass = fabric[className];
-    object = clone(object, true);
+  fabric.Object._fromObject = function(className, object, callback, forceAsync) {
     if (forceAsync) {
       fabric.util.enlivenPatterns([object.fill, object.stroke], function(patterns) {
         object.fill = patterns[0];
         object.stroke = patterns[1];
-        var instance = extraParam ? new klass(object[extraParam], object) : new klass(object);
+        var instance = new fabric[className](object);
         callback && callback(instance);
       });
     }
     else {
-      var instance = extraParam ? new klass(object[extraParam], object) : new klass(object);
+      var instance = new fabric[className](object);
       callback && callback(instance);
       return instance;
     }
