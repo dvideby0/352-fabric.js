@@ -12340,8 +12340,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
           width = dim.x * zoomX,
           height = dim.y * zoomY;
       return {
-        width: width,
-        height: height,
+        width: Math.ceil(width) + 2,
+        height: Math.ceil(height) + 2,
         zoomX: zoomX,
         zoomY: zoomY
       };
