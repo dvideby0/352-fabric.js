@@ -3,7 +3,7 @@
   'use strict';
 
   var fabric = global.fabric || (global.fabric = { }),
-      extend = fabric.util.object.extend;
+    extend = fabric.util.object.extend;
 
   if (fabric.PathGroup) {
     fabric.warn('fabric.PathGroup is already defined');
@@ -68,7 +68,7 @@
      */
     parseDimensionsFromPaths: function(options) {
       var points, p, xC = [], yC = [], path, height, width,
-          m;
+        m;
       for (var j = this.paths.length; j--;) {
         path = this.paths[j];
         height = path.height + path.strokeWidth;
@@ -185,9 +185,9 @@
      */
     toSVG: function(reviver) {
       var objects = this.getObjects(),
-          p = this.getPointByOrigin('left', 'top'),
-          translatePart = 'translate(' + p.x + ' ' + p.y + ')',
-          markup = this._createBaseSVGMarkup();
+        p = this.getPointByOrigin('left', 'top'),
+        translatePart = 'translate(' + p.x + ' ' + p.y + ')',
+        markup = this._createBaseSVGMarkup();
       markup.push(
         '<g ', this.getSvgId(),
         'style="', this.getSvgStyles(), '" ',
@@ -256,22 +256,22 @@
    * @param {Function} [callback] Callback to invoke when an fabric.PathGroup instance is created
    */
   fabric.PathGroup.fromObject = function(object, callback) {
+    var originalPaths = object.paths;
+    delete object.paths;
     // remove this pattern from 2.0 accepts only object
-    if (typeof object.paths === 'string') {
-      fabric.loadSVGFromURL(object.paths, function (elements) {
-
-        var pathUrl = object.paths;
-        delete object.paths;
-
+    if (typeof orignalPaths === 'string') {
+      fabric.loadSVGFromURL(originalPaths, function (elements) {
+        var pathUrl = originalPaths;
         var pathGroup = fabric.util.groupSVGElements(elements, object, pathUrl);
-
+        object.paths = originalPaths;
         callback(pathGroup);
       });
     }
     else {
-      fabric.util.enlivenObjects(object.paths, function(enlivenedObjects) {
-        delete object.paths;
-        callback(new fabric.PathGroup(enlivenedObjects, object));
+      fabric.util.enlivenObjects(originalPaths, function(enlivenedObjects) {
+        var pathGroup = new fabric.PathGroup(enlivenedObjects, object);
+        object.paths = originalPaths;
+        callback(pathGroup);
       });
     }
   };
